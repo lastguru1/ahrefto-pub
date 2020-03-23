@@ -6,7 +6,7 @@ addEventListener('fetch', event => {
   let url = new URL(event.request.url);
   if(url.pathname.startsWith('/c/')) {
     // Creating a new Short URL
-    event.respondWith(ahrefCreate(url.searchParams.get('q') || '', url.searchParams.get('t') || '', url.searchParams.get('c') || ''));
+    event.respondWith(ahrefCreate(url.searchParams.get('q') || '', url.searchParams.get('t') || '', url.searchParams.get('f') || '', url.searchParams.get('c') || ''));
   } else if(url.pathname == '/' || url.pathname.lastIndexOf('/') > 0) {
     // Returning whatever we actually host under our domain for the root / and sub-directories (e.g. a nice front-end)
     event.respondWith(fetch(event.request.url, event.request))
@@ -26,7 +26,7 @@ const FB_KEY = 'YourFirebaseDatabaseSecret';
 // Default Google Analytics ID
 const UA_ID = 'UA-123456789-1';
 // Default Facebook ID
-const FB_ID = '';
+const FB_ID = '123456789';
 
 /**
  * Include third-party dependencies
@@ -71,9 +71,10 @@ const rJson = (status,data) => (
  * The Create function which generates a new Short Id for a given destination URL and PUTs it into the database
  * @param {string} longUrl
  * @param {string} analyticsId
+ * @param {string} facebookId
  * @param {string} campaign
  */
-async function ahrefCreate(longUrl, analyticsId, campaign) {
+async function ahrefCreate(longUrl, analyticsId, facebookId, campaign) {
 
 	if(!longUrl || !longUrl.match(/^https?:\/\//i)) {
 		return rJson(400, {error:"URL must begin with http(s)://"});
@@ -90,6 +91,7 @@ async function ahrefCreate(longUrl, analyticsId, campaign) {
     	longUrl: longUrl,
       createdAt: new Date().getTime(),
       analyticsId: analyticsId || UA_ID,
+      facebookId: facebookId || FB_ID,
       campaign: campaign
     }),
     headers: {
@@ -133,7 +135,7 @@ async function ahrefRead(shortId,userAgent) {
     } else if (isBot(userAgent)) {
       return r301(data.longUrl);
     } else {
-      return rMain(200,data.longUrl,data.analyticsId,null,data.campaign);
+      return rMain(200,data.longUrl,data.analyticsId,data.facebookId,data.campaign);
     }
   
   } else {
@@ -180,7 +182,7 @@ function rMain(status,longUrl,analyticsId,facebookId,campaign) {
         function gtag(){dataLayer.push(arguments);}
         gtag('js', new Date());
 
-        gtag('config', '${analyticsId}', { 'anonymize_ip': true, 'transport_type': 'beacon' ${campaign ? `, 'page_title': '${campaign}'` : ''} });
+        gtag('config', '${analyticsId}', { 'transport_type': 'beacon' ${campaign ? `, 'page_title': '${campaign}'` : ''} });
       </script>
       ` : ''}
       <script>
