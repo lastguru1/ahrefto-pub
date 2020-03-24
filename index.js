@@ -4,15 +4,23 @@
  */
 addEventListener('fetch', event => {
   let url = new URL(event.request.url);
+  let ext = url.pathname.split('.').pop();
+  let userAgent = event.request.headers.get('user-agent') || '';
   if(url.pathname.startsWith('/c/')) {
     // Creating a new Short URL
     event.respondWith(ahrefCreate(url.searchParams.get('q') || '', url.searchParams.get('t') || '', url.searchParams.get('f') || '', url.searchParams.get('c') || ''));
   } else if(url.pathname == '/' || url.pathname.lastIndexOf('/') > 0) {
     // Returning whatever we actually host under our domain for the root / and sub-directories (e.g. a nice front-end)
-    event.respondWith(fetch(event.request.url, event.request))
-  }	else if(url.pathname.lastIndexOf('/') === 0) {
+    event.respondWith(pageRead(url.pathname,ext))
+  } else if(url.pathname.lastIndexOf('/') === 0) {
     // Returning the redirect logic
-    event.respondWith(ahrefRead(url.pathname.substring(1,10),event.request.headers.get('user-agent')))
+    if (ext == 'js') {
+      event.respondWith(ahrefReadJson(url.pathname.substring(1,10)));
+    } else if (ext == 'svg') {
+      event.respondWith(ahrefReadQr(url.origin,url.pathname.substring(1,10),url.search));
+    } else {
+      event.respondWith(ahrefRead(url.pathname.substring(1,10),userAgent,url.search));
+    }
   } else
     // Other requests get 404
     event.respondWith(r404());
@@ -32,6 +40,7 @@ const FB_ID = '123456789';
  * Include third-party dependencies
  */
 const shortid = require('shortid');
+const qr = require('qrcode-svg');
 
 /**
  * Test user agent for bot strings
@@ -116,8 +125,9 @@ async function ahrefCreate(longUrl, analyticsId, facebookId, campaign) {
  * @param {string} shortId
  * @param {string} userAgent
  */
-async function ahrefRead(shortId,userAgent) {
+async function ahrefRead(shortId,userAgent,search) {
 
+  if (search == '?') { search = '';}
   let url = FB_URL+'links/'+shortId+'.json?auth='+FB_KEY;
   
   let init = {
@@ -133,9 +143,125 @@ async function ahrefRead(shortId,userAgent) {
   	if(!data) {
       return r404();
     } else if (isBot(userAgent)) {
-      return r301(data.longUrl);
+      return r301(data.longUrl+search);
     } else {
-      return rMain(200,data.longUrl,data.analyticsId,data.facebookId,data.campaign);
+      return rMain(200,data.longUrl+search,data.analyticsId,data.facebookId,data.campaign);
+    }
+  
+  } else {
+	  return r404();
+  }
+
+}
+
+async function ahrefReadJson(shortId) {
+
+  let url = FB_URL+'links/'+shortId+'.json?auth='+FB_KEY;
+  
+  let init = {
+    method: 'GET'
+  }
+  const fbReq = new Request(url, init);
+
+  let res = await fetch(fbReq);
+
+  if(res.status === 200) {
+    let data = await res.json();
+
+    if(!data) {
+      return rJson(404, {error:"n/a"});
+    } else {
+      return rJson(200, data);
+    }
+  
+  } else {
+    return rJson(404, {error:"n/a"});
+  }
+
+}
+
+async function ahrefReadQr(origin,shortId,search) {
+
+  if (search == '?') { search = '';}
+  let url = FB_URL+'links/'+shortId+'.json?auth='+FB_KEY;
+  
+  let init = {
+    method: 'GET'
+  }
+  const fbReq = new Request(url, init);
+
+  let res = await fetch(fbReq);
+
+  if(res.status === 200) {
+    let data = await res.json();
+
+    if(!data) {
+      return r404();
+    } else {
+      const qr_svg = new qr({
+        content: origin+'/'+shortId+search,
+        join: true,
+        container: "svg-viewbox",
+        ecl: "L"
+      }).svg();
+      return new Response(qr_svg, {
+        headers: {
+          'Content-Type': 'image/svg'
+        },
+        status: 200
+      });
+    }
+  
+  } else {
+    return r404();
+  }
+
+}
+
+
+/**
+ * The webpage Read function which looks up static pages in the database and returns the result
+ * @param {string} pathname
+ * @param {string} ext
+ */
+async function pageRead(pathname, ext) {
+
+  let name = pathname.replace(/\//g, '_').replace(/\./g, '-');
+  let url = FB_URL+'pages/'+name+'.json?auth='+FB_KEY;
+
+  switch (ext) {
+    case "js":
+      var mt = "text/javascript";
+      break;
+    case "css":
+      var mt = "text/css";
+      break;
+    default:
+      var mt = "text/html";
+    }
+  
+  let init = {
+    method: 'GET'
+  }
+  const fbReq = new Request(url, init);
+
+  let res = await fetch(fbReq);
+
+  if(res.status === 200) {
+  	let data = await res.json();
+
+  	if(!data) {
+      return r404();
+    } else {
+	return new Response(
+	    data,
+	    {
+    		headers: {
+    		    'Content-Type': mt+'; charset=utf-8'
+    		},
+    		status: 200
+	    }
+	)
     }
   
   } else {
@@ -188,7 +314,7 @@ function rMain(status,longUrl,analyticsId,facebookId,campaign) {
       <script>
           var timer = setTimeout(function() {
             window.location='${longUrl}' 
-          }, 750);
+          }, 500);
       </script>
     </head>
     <body>
