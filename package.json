@@ -7,6 +7,7 @@
     "webpack-cli": "^3.2.1"
   },
   "dependencies": {
+    "qrcode-svg": "^1.1.0",
     "shortid": "^2.2.14"
   }
 }
